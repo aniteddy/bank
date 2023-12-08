@@ -2,7 +2,8 @@ from django.urls import path
 from rest_framework import permissions
 
 from b.views import ClientsAPIView, BankAccountAPIView, ClientAPIView, BankAccountsAPIView, ClientAccountsAPIView, \
-    TransactionsHistoryAPIView, CreateTransactionAPIView, ClientAccountsXMLAPIView, CreateDebitCreditTransactionAPIView
+    TransactionsHistoryAPIView, CreateTransactionAPIView, ExportClientAccountsXMLAPIView, \
+    CreateDebitCreditTransactionAPIView, ImportClientAccountsXMLAPIView
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 
@@ -31,5 +32,6 @@ urlpatterns = [
     path('history/', TransactionsHistoryAPIView.as_view()),
     path('create_transaction/', CreateTransactionAPIView.as_view()),
     path('clients_create_transaction/', CreateDebitCreditTransactionAPIView.as_view()),
-    path('create_xml/', ClientAccountsXMLAPIView.as_view())
+    path('export_xml/', ExportClientAccountsXMLAPIView.as_view()),
+    path('import_xml/', ImportClientAccountsXMLAPIView.as_view())
 ]

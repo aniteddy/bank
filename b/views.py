@@ -108,7 +108,7 @@ class BankAccountAPIView(APIView):
 class ClientAccountsAPIView(APIView):
 
     @swagger_auto_schema(tags=['client_accounts'],
-                         operation_description='Список аккаунтов клиентов')
+                         operation_description='Список клиентов и его счетов')
     def get(self, request):
         client = []
         value_list = Clients.objects.values_list('client_id', flat=True).distinct()
@@ -121,7 +121,7 @@ class ClientAccountsAPIView(APIView):
 class TransactionsHistoryAPIView(APIView):
 
     @swagger_auto_schema(tags=['transactions'],
-                         operation_description='История оперций проводок по счетам')
+                         operation_description='История операций проводок по счетам')
     def get(self, request):
         transactions: Transactions = Transactions.objects.all()
         serializer = TransactionsSerializer(transactions, many=True)
@@ -139,7 +139,7 @@ class CreateTransactionAPIView(APIView):
                                      description='id клиента, корому принадлежит счёт', required=True)
 
     @swagger_auto_schema(tags=['transactions'],
-                         operation_description='Create transaction, проводка со счёто клиента',
+                         operation_description='Create transaction, проводка со счётом клиента',
                          manual_parameters=[bank_account, type, amount, client])
     def post(self, request, **kwargs):
         serializer = TransactionsSerializer(data=request.data)
@@ -210,11 +210,39 @@ class CreateDebitCreditTransactionAPIView(APIView):
         return utils.generic_successful_response("OK")
 
 
-class ClientAccountsXMLAPIView(APIView):
+class ExportClientAccountsXMLAPIView(APIView):
 
     @swagger_auto_schema(tags=['client_accounts'],
-                         operation_description='Создание xml файла информацией о клиентах и их счетах')
+                         operation_description='Экспорт в xml файл информации о клиентах и их счетах')
     def get(self, request):
+        client = []
+        value_list = Clients.objects.values_list('client_id', flat=True).distinct()
+        for v in value_list:
+            client.append(Clients.objects.filter(client_id=v).first())
+        serializer = ClientsAccountsSerializer(client, many=True)
+
+        result = []
+        for c in serializer.data:
+            bank_accounts = []
+            for ba in c['bank_accounts']:
+                bank_accounts.append({'account_number': ba['account_number'], 'balance': ba['balance']})
+            result.append({'client_id': c['client_id'], 'name': c['name'], 'bank_accounts': bank_accounts})
+
+        xml_string = dicttoxml({"clients": result}, attr_type=False).decode()
+        # xml_string = dicttoxml(serializer.data, attr_type=False).decode()
+        xml_file = open(datetime.now().strftime("%d %B %Y %H %M %S") + '.xml', 'w')
+        xml_file.write(str(xml_string))
+        xml_file.close()
+
+        return utils.generic_successful_response(serializer.data)
+
+
+class ImportClientAccountsXMLAPIView(APIView):
+
+    @swagger_auto_schema(tags=['client_accounts'],
+                         operation_description='Импорт xml файла с информацией о клиентах и их счетах')
+    def get(self, request):
+        # with open()
         client = []
         value_list = Clients.objects.values_list('client_id', flat=True).distinct()
         for v in value_list:
