@@ -26,6 +26,7 @@ http://localhost:8000/b/clients/
 
 Проводка между счетами клиентов, дебет-кредит суммы с изменением остатка на счете
 http://localhost:8000/b/clients_create_transaction/
+
 Пример запроса через postman
 {
     "debit_bank_account" : 1,
@@ -37,6 +38,7 @@ http://localhost:8000/b/clients_create_transaction/
 
 Проводка со счётом клиента
 http://localhost:8000/b/create_transaction/
+
 Пример запроса через postman
 {
     "bank_account" : 3,
