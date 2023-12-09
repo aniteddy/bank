@@ -10,6 +10,9 @@ from dicttoxml import dicttoxml
 from drf_yasg.utils import swagger_auto_schema
 
 
+from bs4 import BeautifulSoup
+
+
 class ClientAPIView(APIView):
 
     @swagger_auto_schema(tags=['client'], operation_description='Получение клиента по id')
@@ -212,7 +215,7 @@ class CreateDebitCreditTransactionAPIView(APIView):
 
 class ExportClientAccountsXMLAPIView(APIView):
 
-    @swagger_auto_schema(tags=['client_accounts'],
+    @swagger_auto_schema(tags=['xml'],
                          operation_description='Экспорт в xml файл информации о клиентах и их счетах')
     def get(self, request):
         client = []
@@ -226,9 +229,9 @@ class ExportClientAccountsXMLAPIView(APIView):
             bank_accounts = []
             for ba in c['bank_accounts']:
                 bank_accounts.append({'account_number': ba['account_number'], 'balance': ba['balance']})
-            result.append({'client_id': c['client_id'], 'name': c['name'], 'bank_accounts': bank_accounts})
+            result.append({'client': {'client_id': c['client_id'], 'name': c['name'], 'bank_accounts': bank_accounts}})
 
-        xml_string = dicttoxml({"clients": result}, attr_type=False).decode()
+        xml_string = dicttoxml(result, attr_type=False).decode()
         # xml_string = dicttoxml(serializer.data, attr_type=False).decode()
         xml_file = open(datetime.now().strftime("%d %B %Y %H %M %S") + '.xml', 'w')
         xml_file.write(str(xml_string))
@@ -238,20 +241,54 @@ class ExportClientAccountsXMLAPIView(APIView):
 
 
 class ImportClientAccountsXMLAPIView(APIView):
+    file = openapi.Parameter('file', openapi.IN_QUERY, type=openapi.TYPE_FILE,
+                             description="xml файл", required=True)
 
-    @swagger_auto_schema(tags=['client_accounts'],
+    @swagger_auto_schema(tags=['xml'],
                          operation_description='Импорт xml файла с информацией о клиентах и их счетах')
-    def get(self, request):
-        # with open()
+    def post(self, request):
+        selected_file = request.FILES['file']
+        xml_file = open(selected_file.name, 'r')
+        text_from_xml_file = xml_file.read()
+
+        bs_data = BeautifulSoup(text_from_xml_file, 'xml')
+        bs_data_clients = bs_data.find_all('client')
+
         client = []
-        value_list = Clients.objects.values_list('client_id', flat=True).distinct()
-        for v in value_list:
-            client.append(Clients.objects.filter(client_id=v).first())
-        serializer = ClientsAccountsSerializer(client, many=True)
+        for c in bs_data_clients:
+            bank_accounts = []
+            client_bank_accounts = c.find_all('item')
+            for cba in client_bank_accounts:
+                bank_accounts.append({'account_number': cba.find('account_number').text,
+                                      'balance': cba.find('balance').text})
+            client.append({'client_id': c.find('client_id').text, 'name': c.find('name').text,
+                           'bank_accounts': bank_accounts})
 
-        xml_string = dicttoxml(serializer.data, attr_type=False).decode()
-        xml_file = open(datetime.now().strftime("%d %B %Y %H %M %S") + '.xml', 'w')
-        xml_file.write(str(xml_string))
-        xml_file.close()
+        for cl in client:
+            if cl['client_id'] is not None and cl['name'] is not None:
+                for ba in cl['bank_accounts']:
+                    if ba['account_number'] is not None and ba['balance'] is not None:
+                        find_bank_account, find_client = None, None
+                        try:
+                            # проверка существует ли такой банковский аккаунт
+                            find_bank_account: BankAccount = BankAccount.objects.get(account_number=int(ba['account_number']))
+                            if int(ba['balance']) != find_bank_account.balance:
+                                find_bank_account.balance = int(ba['balance'])
+                                find_bank_account.save(())
+                        except BankAccount.DoesNotExist:
+                            find_bank_account: BankAccount = BankAccount.objects.create(balance=int(ba['balance']),
+                                                                                        account_number=int(ba['account_number']))
+                        try:
+                            # есть клиент с таким id  и банковским аккаунтом
+                            find_client: Clients = Clients.objects.get(client_id=int(cl['client_id']),
+                                                                       bank_account__account_number=find_bank_account.account_number)
+                            # если имя не совпадает, поменять
+                            if cl['name'] != find_client.name:
+                                find_client.name = cl['name']
+                                find_client.save()
+                        except Clients.DoesNotExist:
+                            # клиента с таким id и банковским номером не существует
+                            find_client: Clients = Clients.objects.create(client_id=int(cl['client_id']),
+                                                                          bank_account=find_bank_account, name=cl['name'])
 
-        return utils.generic_successful_response(serializer.data)
+        return utils.generic_successful_response('OK')
